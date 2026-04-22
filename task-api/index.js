@@ -6,7 +6,7 @@ app.use(express.json());
 const { createClient } = require("redis");
 
 const redisClient = createClient({
-  url: "redis://redis:6379",
+  url: process.env.REDIS_URL,
 });
 
 redisClient.connect();
