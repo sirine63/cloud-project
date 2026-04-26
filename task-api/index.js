@@ -1,7 +1,6 @@
 const express = require("express");
 const app = express();
 const multer = require("multer");
-const upload = multer({ dest: "uploads/" });
 app.use(express.json());
 
 const { createClient } = require("redis");
