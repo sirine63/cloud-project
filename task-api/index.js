@@ -32,12 +32,14 @@ app.listen(3000, () => {
   console.log("Server running on port 3000");
 });
 
-app.post("/create-task", async (req, res) => {
-  const task = JSON.stringify(req.body);
+const multer = require("multer");
+const upload = multer({ dest: "uploads/" });
 
-  await redisClient.lPush("tasks", task);
+app.post("/create-task", upload.single("file"), async (req, res) => {
+  const task = {
+    filename: req.file.filename,
+  };
 
-  console.log("Task added to Redis:", task);
-
+  await redisClient.lPush("tasks", JSON.stringify(task));
   res.send("Task queued");
 });
