@@ -21,9 +21,6 @@ app.listen(3000, () => {
 });
 
 const fs = require("fs");
-
-const app = express();
-
 /* 
 ========================
 1. CREATE STORAGE ENGINE
