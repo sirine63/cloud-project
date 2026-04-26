@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
-
+const multer = require("multer");
+const upload = multer({ dest: "uploads/" });
 app.use(express.json());
 
 const { createClient } = require("redis");
@@ -31,9 +32,6 @@ app.post("/task", (req, res) => {
 app.listen(3000, () => {
   console.log("Server running on port 3000");
 });
-
-const multer = require("multer");
-const upload = multer({ dest: "uploads/" });
 
 app.post("/create-task", upload.single("file"), async (req, res) => {
   const task = {
