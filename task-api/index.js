@@ -45,7 +45,6 @@ connectRedis();
    MULTER SETUP
 ======================= */
 
-const upload = multer({ storage });
 // storage engine (cloud)
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
@@ -54,6 +53,7 @@ const storage = new CloudinaryStorage({
     allowed_formats: ["jpg", "png", "jpeg"],
   },
 });
+const upload = multer({ storage });
 /* =======================
    HEALTH CHECK
 ======================= */
