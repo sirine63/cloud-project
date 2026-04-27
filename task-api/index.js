@@ -6,6 +6,16 @@ const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 const cors = require("cors");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("cloudinary").v2;
+
+// configure cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 app.use(express.json());
 
 app.use(
@@ -34,17 +44,16 @@ connectRedis();
 /* =======================
    MULTER SETUP
 ======================= */
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
-});
 
 const upload = multer({ storage });
-
-if (!fs.existsSync("uploads")) {
-  fs.mkdirSync("uploads");
-}
-
+// storage engine (cloud)
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "uploads",
+    allowed_formats: ["jpg", "png", "jpeg"],
+  },
+});
 /* =======================
    HEALTH CHECK
 ======================= */
@@ -56,31 +65,29 @@ app.get("/", (req, res) => {
    UPLOAD + CREATE JOB
 ======================= */
 app.post("/upload", upload.single("image"), async (req, res) => {
-  try {
-    const jobId = uuidv4();
+  const jobId = uuidv4();
 
-    const job = {
+  // 🔥 IMPORTANT: Cloudinary gives URL
+  const fileUrl = req.file.path;
+
+  await redisClient.set(
+    `job:${jobId}`,
+    JSON.stringify({
       status: "processing",
-      file: req.file.filename,
-    };
+      progress: 0,
+      file: fileUrl,
+    }),
+  );
 
-    // 🔥 STORE IN REDIS
-    await redisClient.set(`job:${jobId}`, JSON.stringify(job));
-
-    // push to worker queue
-    await redisClient.lPush(
-      "tasks",
-      JSON.stringify({ jobId, file: req.file.filename }),
-    );
-
-    res.json({
+  await redisClient.lPush(
+    "tasks",
+    JSON.stringify({
       jobId,
-      status: "processing",
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Upload failed" });
-  }
+      file: fileUrl,
+    }),
+  );
+
+  res.json({ jobId });
 });
 
 /* =======================
