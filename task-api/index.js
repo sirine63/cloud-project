@@ -1,97 +1,104 @@
 const express = require("express");
-const app = express();
 const multer = require("multer");
+const fs = require("fs");
+const { createClient } = require("redis");
+const { v4: uuidv4 } = require("uuid");
+
+const app = express();
+const cors = require("cors");
 app.use(express.json());
 
-const { createClient } = require("redis");
-
+app.use(
+  cors({
+    origin: "http://127.0.0.1:5500",
+  }),
+);
+/* =======================
+   REDIS CLIENT
+======================= */
 const redisClient = createClient({
   url: process.env.REDIS_URL,
 });
 
-redisClient.connect();
-// health check
-app.get("/", (req, res) => {
-  res.send("Task API is running 🚀");
+redisClient.on("error", (err) => {
+  console.error("Redis error:", err);
 });
 
-app.listen(3000, () => {
-  console.log("Server running on port 3000");
-});
+async function connectRedis() {
+  await redisClient.connect();
+  console.log("Redis connected ✅");
+}
 
-const fs = require("fs");
-/* 
-========================
-1. CREATE STORAGE ENGINE
-========================
-This tells multer:
-- where to save files
-- how to name them
-*/
+connectRedis();
+
+/* =======================
+   MULTER SETUP
+======================= */
 const storage = multer.diskStorage({
-  // 📁 WHERE to save files
-  destination: (req, file, cb) => {
-    // "uploads/" = folder name
-    cb(null, "uploads/");
-  },
-
-  // 🏷 HOW to name files
-  filename: (req, file, cb) => {
-    // Date.now() prevents duplicate names
-    cb(null, Date.now() + "-" + file.originalname);
-  },
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
 
-/*
-========================
-2. CREATE MULTER UPLOADER
-========================
-This is the middleware that handles file uploads
-*/
 const upload = multer({ storage });
 
-/*
-========================
-3. CREATE "uploads" FOLDER IF NOT EXISTS
-========================
-Node does NOT automatically create folders
-So we manually create it
-*/
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
 
-/*
-========================
-4. UPLOAD ROUTE
-========================
-POST /upload → receives file
-*/
+/* =======================
+   HEALTH CHECK
+======================= */
+app.get("/", (req, res) => {
+  res.send("Task API running 🚀");
+});
+
+/* =======================
+   UPLOAD + CREATE JOB
+======================= */
 app.post("/upload", upload.single("image"), async (req, res) => {
-  // 📌 file info after upload
-  console.log("File received:", req.file);
+  try {
+    const jobId = uuidv4();
 
-  /*
-  ========================
-  5. SEND TASK TO REDIS
-  ========================
-  We push file name into Redis queue
-  so worker can process it later
-  */
-  await redisClient.lPush(
-    "tasks",
-    JSON.stringify({
+    const job = {
+      status: "processing",
       file: req.file.filename,
-    }),
-  );
+    };
 
-  /*
-  ========================
-  6. RESPONSE TO USER
-  ========================
-  */
-  res.json({
-    message: "File uploaded successfully",
-    file: req.file.filename,
-  });
+    // 🔥 STORE IN REDIS
+    await redisClient.set(`job:${jobId}`, JSON.stringify(job));
+
+    // push to worker queue
+    await redisClient.lPush(
+      "tasks",
+      JSON.stringify({ jobId, file: req.file.filename }),
+    );
+
+    res.json({
+      jobId,
+      status: "processing",
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Upload failed" });
+  }
+});
+
+/* =======================
+   GET JOB STATUS
+======================= */
+app.get("/status/:jobId", async (req, res) => {
+  const data = await redisClient.get(`job:${req.params.jobId}`);
+
+  if (!data) {
+    return res.json({ status: "not found" });
+  }
+
+  res.json(JSON.parse(data));
+});
+
+/* =======================
+   SERVER START
+======================= */
+app.listen(3000, () => {
+  console.log("Server running on port 3000 🚀");
 });
