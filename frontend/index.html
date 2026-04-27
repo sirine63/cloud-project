@@ -1,0 +1,162 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Upload System</title>
+
+    <style>
+      body {
+        font-family: Arial;
+        background: #0f172a;
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+
+      .box {
+        width: 400px;
+        padding: 20px;
+        background: #1e293b;
+        border-radius: 12px;
+        text-align: center;
+      }
+
+      .drop-zone {
+        border: 2px dashed #38bdf8;
+        padding: 30px;
+        border-radius: 10px;
+        cursor: pointer;
+        margin-bottom: 20px;
+      }
+
+      .drop-zone.dragover {
+        background: #334155;
+      }
+
+      input {
+        display: none;
+      }
+
+      button {
+        background: #38bdf8;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-top: 10px;
+      }
+
+      .progress {
+        width: 100%;
+        background: #334155;
+        border-radius: 10px;
+        margin-top: 15px;
+        overflow: hidden;
+      }
+
+      .bar {
+        height: 10px;
+        width: 0%;
+        background: #22c55e;
+      }
+
+      #result {
+        margin-top: 10px;
+        font-size: 14px;
+        color: #a7f3d0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="box">
+      <h2>📤 Upload File</h2>
+
+      <div class="drop-zone" id="dropZone">Drag & Drop file here or click</div>
+
+      <input type="file" id="fileInput" />
+
+      <button onclick="uploadFile()">Upload</button>
+
+      <div class="progress">
+        <div class="bar" id="bar"></div>
+      </div>
+
+      <div id="result"></div>
+    </div>
+
+    <script>
+      const dropZone = document.getElementById("dropZone");
+      const fileInput = document.getElementById("fileInput");
+      const bar = document.getElementById("bar");
+      const result = document.getElementById("result");
+
+      let file = null;
+
+      /* CLICK to select file */
+      dropZone.onclick = () => fileInput.click();
+
+      fileInput.onchange = (e) => {
+        file = e.target.files[0];
+        dropZone.innerText = file.name;
+      };
+
+      /* DRAG & DROP */
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("dragover");
+      });
+
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("dragover");
+      });
+
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        file = e.dataTransfer.files[0];
+        dropZone.innerText = file.name;
+      });
+
+      /* UPLOAD FUNCTION */
+      function uploadFile() {
+        const formData = new FormData();
+        formData.append("image", file);
+
+        const xhr = new XMLHttpRequest();
+
+        xhr.open(
+          "POST",
+          "https://task-api-service-production-35ef.up.railway.app/upload",
+        );
+
+        xhr.onload = async () => {
+          const res = JSON.parse(xhr.responseText);
+          const jobId = res.jobId;
+
+          result.innerText = "⏳ Processing...";
+
+          // CHECK STATUS EVERY 2 SECONDS
+          const interval = setInterval(async () => {
+            const r = await fetch(
+              `https://task-api-service-production-35ef.up.railway.app/status/${jobId}`,
+            );
+
+            const data = await r.json();
+
+            result.innerText = "Status: " + data.status;
+
+            if (data.status === "done") {
+              clearInterval(interval);
+              result.innerText = "✅ DONE!";
+            }
+          }, 2000);
+        };
+
+        xhr.send(formData);
+      }
+    </script>
+  </body>
+</html>

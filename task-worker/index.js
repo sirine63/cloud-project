@@ -1,45 +1,59 @@
 const { createClient } = require("redis");
 
-console.log("Worker started 👷");
+console.log("Worker starting 👷");
 
 const redisClient = createClient({
   url: process.env.REDIS_URL,
 });
 
-// 🔥 IMPORTANT: catch Redis errors
+// --------------------
+// Redis error handling
+// --------------------
 redisClient.on("error", (err) => {
   console.error("Redis error:", err);
 });
 
-async function processTasks() {
-  while (true) {
-    try {
-      const task = await redisClient.rPop("tasks");
-
-      if (task) {
-        console.log("Processing task:", JSON.parse(task));
-      } else {
-        await new Promise((r) => setTimeout(r, 3000));
-      }
-    } catch (err) {
-      console.error("Worker loop error:", err);
-      await new Promise((r) => setTimeout(r, 3000)); // prevent crash loop
-    }
-  }
-}
-
+// --------------------
+// Main worker loop
+// --------------------
 async function startWorker() {
   try {
     await redisClient.connect();
     console.log("Connected to Redis ✅");
 
-    processTasks();
-  } catch (err) {
-    console.error("Failed to connect to Redis:", err);
+    while (true) {
+      try {
+        // BLOCKING pop (waits until task exists)
+        const task = await redisClient.brPop("tasks", 0);
 
-    // 🔥 retry instead of crashing
+        const data = JSON.parse(task.element);
+
+        console.log("📦 Processing file:", data.file);
+
+        // simulate processing time
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        console.log("✅ Done processing:", data.file);
+
+        await redisClient.set(
+          `job:${data.jobId}`,
+          JSON.stringify({
+            status: "done",
+            file: data.file,
+          }),
+        );
+      } catch (err) {
+        console.error("❌ Task processing error:", err);
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
+  } catch (err) {
+    console.error("❌ Redis connection failed:", err);
+
+    // retry connection
     setTimeout(startWorker, 5000);
   }
 }
 
+// start worker
 startWorker();
