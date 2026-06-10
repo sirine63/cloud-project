@@ -1,0 +1,9 @@
+# Ignore dependency folders
+**/node_modules/
+
+# Ignore environment variables / secret keys
+**/.env
+
+# Ignore temporary or resized local images generated during testing
+**/resized-*.png
+*.png

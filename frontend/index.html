@@ -1,19 +1,20 @@
 <!doctype html>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Upload System</title>
 
     <style>
       body {
-        font-family: Arial;
+        font-family: Arial, sans-serif;
         background: #0f172a;
         color: white;
         display: flex;
         justify-content: center;
         align-items: center;
         height: 100vh;
+        margin: 0;
       }
 
       .box {
@@ -22,6 +23,7 @@
         background: #1e293b;
         border-radius: 12px;
         text-align: center;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
       }
 
       .drop-zone {
@@ -30,23 +32,50 @@
         border-radius: 10px;
         cursor: pointer;
         margin-bottom: 20px;
+        transition: background 0.2s ease;
       }
 
       .drop-zone.dragover {
         background: #334155;
       }
 
-      input {
+      input[type="file"] {
         display: none;
       }
 
       button {
         background: #38bdf8;
+        color: #0f172a;
+        font-weight: bold;
         border: none;
         padding: 10px 20px;
         border-radius: 8px;
         cursor: pointer;
         margin-top: 10px;
+        width: 100%;
+        font-size: 16px;
+      }
+
+      button:hover {
+        background: #7dd3fc;
+      }
+
+      /* Fixed download button styling rules */
+      #download-btn {
+        display: none; /* Hidden by default */
+        margin-top: 20px;
+        padding: 12px 20px;
+        background-color: #22c55e;
+        color: white;
+        text-decoration: none;
+        border-radius: 8px;
+        font-weight: bold;
+        /* Because the parent .box has text-align: center, this centers it automatically */
+        display: none;
+      }
+
+      #download-btn:hover {
+        background-color: #16a34a;
       }
 
       .progress {
@@ -61,10 +90,11 @@
         height: 10px;
         width: 0%;
         background: #22c55e;
+        transition: width 0.2s ease;
       }
 
       #result {
-        margin-top: 10px;
+        margin-top: 15px;
         font-size: 14px;
         color: #a7f3d0;
       }
@@ -76,14 +106,15 @@
       <h2>📤 Upload File</h2>
 
       <div class="drop-zone" id="dropZone">Drag & Drop file here or click</div>
-
-      <input type="file" id="fileInput" />
+      <input type="file" id="fileInput" accept="image/*" />
 
       <button onclick="uploadFile()">Upload</button>
 
       <div class="progress">
         <div class="bar" id="bar"></div>
       </div>
+
+      <a id="download-btn" href="#" download> 📥 Download Resized Image </a>
 
       <div id="result"></div>
     </div>
@@ -93,6 +124,7 @@
       const fileInput = document.getElementById("fileInput");
       const bar = document.getElementById("bar");
       const result = document.getElementById("result");
+      const downloadBtn = document.getElementById("download-btn");
 
       let file = null;
 
@@ -101,10 +133,10 @@
 
       fileInput.onchange = (e) => {
         file = e.target.files[0];
-        dropZone.innerText = file.name;
+        if (file) dropZone.innerText = file.name;
       };
 
-      /* DRAG & DROP */
+      /* DRAG & DROP RULES */
       dropZone.addEventListener("dragover", (e) => {
         e.preventDefault();
         dropZone.classList.add("dragover");
@@ -116,43 +148,72 @@
 
       dropZone.addEventListener("drop", (e) => {
         e.preventDefault();
+        dropZone.classList.remove("dragover");
         file = e.dataTransfer.files[0];
-        dropZone.innerText = file.name;
+        if (file) dropZone.innerText = file.name;
       });
 
-      /* UPLOAD FUNCTION */
+      /* UPLOAD ACTION */
       function uploadFile() {
+        if (!file) {
+          alert("Please select a file first!");
+          return;
+        }
+
+        // Reset elements on a new upload attempt
+        downloadBtn.style.display = "none";
+        bar.style.width = "0%";
+        result.innerText = "Uploading...";
+
         const formData = new FormData();
         formData.append("image", file);
 
         const xhr = new XMLHttpRequest();
+        xhr.open("POST", "http://localhost:3000/upload");
 
-        xhr.open(
-          "POST",
-          "https://task-api-service-production-35ef.up.railway.app/upload",
-        );
+        // Tracks upload progress to backend
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percent = (event.loaded / event.total) * 100;
+            bar.style.width = percent + "%";
+          }
+        };
 
-        xhr.onload = async () => {
-          const res = JSON.parse(xhr.responseText);
-          const jobId = res.jobId;
+        xhr.onload = () => {
+          try {
+            const res = JSON.parse(xhr.responseText);
+            const jobId = res.jobId;
+            result.innerText = "⏳ Processing image ...";
 
-          result.innerText = "⏳ Processing...";
+            // Start polling the backend for job completion
+            const interval = setInterval(async () => {
+              const r = await fetch(`http://localhost:3000/status/${jobId}`);
+              const data = await r.json();
 
-          // CHECK STATUS EVERY 2 SECONDS
-          const interval = setInterval(async () => {
-            const r = await fetch(
-              `https://task-api-service-production-35ef.up.railway.app/status/${jobId}`,
-            );
+              // Update the visual loading bar based on background task progress
+              bar.style.width = (data.progress || 0) + "%";
 
-            const data = await r.json();
+              if (data.status === "done") {
+                clearInterval(interval);
 
-            result.innerText = "Status: " + data.status;
+                const fileUrl = `http://localhost:3000/download/${data.file}`;
 
-            if (data.status === "done") {
-              clearInterval(interval);
-              result.innerText = "✅ DONE!";
-            }
-          }, 2000);
+                // 1. Update the link path
+                downloadBtn.href = fileUrl;
+
+                // 2. Reveal it as an inline-block element
+                downloadBtn.style.display = "inline-block";
+
+                result.innerHTML = `
+    ✅ DONE! <br/><br/>
+    <img src="${fileUrl}" width="200" style="border-radius: 8px; border: 1px solid #334155;"/>
+  `;
+              }
+            }, 1000);
+          } catch (e) {
+            console.error("Backend response parse error:", xhr.responseText);
+            result.innerText = "❌ Upload failed (backend error)";
+          }
         };
 
         xhr.send(formData);
